@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "ADO Pages",
+  "version": "1.0",
+  "description": "Render HTML files in Azure DevOps repositories as live webpages.",
+  "content_scripts": [
+    {
+      "matches": ["https://dev.azure.com/*/_git/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "host_permissions": ["https://dev.azure.com/*"],
+  "permissions": ["declarativeNetRequest"],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+/* ─── ADO Pages: injected tab ─────────────────────────────────────────────── */
+/* AzDO's bolt-tab classes handle hover/focus styling. We just need the cursor. */
+
+.ado-pages-tab {
+  cursor: pointer;
+}
