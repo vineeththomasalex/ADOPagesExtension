@@ -40,6 +40,24 @@ A declarative net request rule removes `X-Frame-Options` and `Content-Security-P
 | `content.css` | Minimal styles for the injected tab |
 | `rules.json` | Declarative net request rules (header removal) |
 
+## Security
+
+> **⚠️ Use at your own risk.** This extension has known security limitations. Only install it if you trust the HTML files in the Azure DevOps repositories you browse.
+
+### Known concerns
+
+1. **Unsandboxed iframe** — Rendered HTML pages run in an iframe without a `sandbox` attribute, meaning JavaScript in a repo HTML file executes with full `dev.azure.com` origin privileges. A malicious HTML file could access your AzDO session cookies, localStorage, and make authenticated API calls on your behalf (read/write repos, pipelines, work items, etc.).
+
+2. **Global CSP/X-Frame-Options stripping** — The extension removes `Content-Security-Policy` and `X-Frame-Options` headers on *all* `dev.azure.com` page loads, not just when rendering HTML files. This weakens Azure DevOps's built-in XSS protections for your entire browsing session while the extension is enabled.
+
+3. **No content sanitization** — HTML fetched from the repository is rendered as-is with no sanitization or script filtering.
+
+### Recommendations
+
+- Only enable this extension when you need it.
+- Be cautious when viewing HTML files from repositories you don't control.
+- Consider disabling the extension when working with untrusted repositories.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
