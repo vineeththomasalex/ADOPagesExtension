@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Windows Error Code Lookup</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .search-box {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .search-box input {
+      flex: 1;
+      min-width: 240px;
+      padding: 10px 14px;
+      font-size: 1rem;
+      font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .search-box input:focus { border-color: var(--brand); }
+    .search-box select {
+      padding: 10px 14px;
+      font-size: 0.9rem;
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      cursor: pointer;
+    }
+    .result-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin: 16px 0;
+    }
+    .result-card h3 { margin: 0 0 4px; color: var(--brand-dk); }
+    .result-card .code-value {
+      font-family: 'Cascadia Code', Consolas, monospace;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .result-card .meta { color: var(--text-sec); font-size: 0.85rem; margin: 4px 0 8px; }
+    .result-card .desc { line-height: 1.5; }
+    .result-card .conversions {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      font-size: 0.85rem;
+      color: var(--text-sec);
+    }
+    .result-card .conversions code { font-size: 0.82rem; }
+    .no-result { color: var(--text-sec); font-style: italic; padding: 16px 0; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #fff;
+      text-transform: uppercase;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .badge.hresult   { background: #0078d4; }
+    .badge.ntstatus  { background: #6f42c1; }
+    .badge.win32     { background: #28a745; }
+    .badge.winsock   { background: #e36209; }
+    .help-text { font-size: 0.85rem; color: var(--text-sec); margin-top: 8px; }
+    #results-count { font-size: 0.85rem; color: var(--text-sec); margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Windows Error Code Lookup</h1>
+  <p>Search HRESULT, NTSTATUS, and Win32 error codes</p>
+</header>
+
+<nav class="samples-nav">
+  <a href="index.html">Home</a>
+  <a href="error-codes.html">Error Codes</a>
+  <a href="base-converter.html">Base Converter</a>
+  <a href="api-reference.html">API Reference</a>
+  <a href="architecture.html">Architecture</a>
+</nav>
+
+<main>
+
+<div class="card">
+  <div class="search-box">
+    <input type="text" id="search" placeholder="e.g. 0x80070005, 2147942405, E_ACCESSDENIED, access denied" autofocus>
+    <select id="filter">
+      <option value="all">All types</option>
+      <option value="hresult">HRESULT</option>
+      <option value="ntstatus">NTSTATUS</option>
+      <option value="win32">Win32</option>
+    </select>
+  </div>
+  <p class="help-text">
+    Enter a hex value (0x…), decimal value, or search by name/description.
+    HRESULT values are automatically decoded into facility and code components.
+  </p>
+</div>
+
+<div id="results-count"></div>
+<div id="results"></div>
+
+</main>
+
+<footer>
+  Windows Error Code Lookup &mdash; Sample tool for
+  <a href="https://github.com/vineeththomasalex/ADOPagesExtension">ADO Pages</a>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  // ─── Error code database ──────────────────────────────────────────────────────
+  // Each entry: [hex, name, type, description]
+  const DB = [
+    // ── Common HRESULTs ──
+    [0x00000000, 'S_OK',                    'hresult', 'Operation successful.'],
+    [0x00000001, 'S_FALSE',                 'hresult', 'Operation successful but returned no results or had a non-critical side effect.'],
+    [0x80004001, 'E_NOTIMPL',               'hresult', 'Not implemented. The requested feature or method is not supported.'],
+    [0x80004002, 'E_NOINTERFACE',           'hresult', 'No such interface supported. QueryInterface failed for the requested IID.'],
+    [0x80004003, 'E_POINTER',               'hresult', 'Invalid pointer. A null pointer was passed where a valid pointer was expected.'],
+    [0x80004004, 'E_ABORT',                 'hresult', 'Operation aborted by the caller.'],
+    [0x80004005, 'E_FAIL',                  'hresult', 'Unspecified failure. A generic error when no more specific HRESULT applies.'],
+    [0x8000FFFF, 'E_UNEXPECTED',            'hresult', 'Unexpected failure. The operation encountered an unexpected condition.'],
+    [0x80070005, 'E_ACCESSDENIED',          'hresult', 'General access denied error. The caller does not have the required permissions.'],
+    [0x80070006, 'E_HANDLE',                'hresult', 'Invalid handle. The handle passed to the function is not valid.'],
+    [0x80070057, 'E_INVALIDARG',            'hresult', 'One or more arguments are not valid.'],
+    [0x8007000E, 'E_OUTOFMEMORY',           'hresult', 'Insufficient memory to complete the operation.'],
+    [0x80070002, 'HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)', 'hresult', 'The system cannot find the file specified.'],
+    [0x80070003, 'HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND)', 'hresult', 'The system cannot find the path specified.'],
+    [0x800401F0, 'CO_E_NOTINITIALIZED',     'hresult', 'CoInitialize has not been called. COM must be initialized before use.'],
+    [0x80040154, 'REGDB_E_CLASSNOTREG',     'hresult', 'Class not registered. The CLSID is not found in the registry.'],
+    [0x80040111, 'CLASS_E_CLASSNOTAVAILABLE','hresult', 'ClassFactory cannot supply requested class.'],
+    [0x80040002, 'OLE_E_ADVF',              'hresult', 'Invalid advise flags.'],
+    [0x80070020, 'HRESULT_FROM_WIN32(ERROR_SHARING_VIOLATION)', 'hresult', 'The process cannot access the file because it is being used by another process.'],
+    [0x800700B7, 'HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS)', 'hresult', 'Cannot create a file when that file already exists.'],
+    [0x800700EA, 'HRESULT_FROM_WIN32(ERROR_MORE_DATA)', 'hresult', 'More data is available. The buffer was too small.'],
+    [0x80070490, 'HRESULT_FROM_WIN32(ERROR_NOT_FOUND)', 'hresult', 'Element not found.'],
+    [0x800706BA, 'HRESULT_FROM_WIN32(RPC_S_SERVER_UNAVAILABLE)', 'hresult', 'The RPC server is unavailable.'],
+    [0x800706BE, 'HRESULT_FROM_WIN32(RPC_S_CALL_FAILED)', 'hresult', 'The remote procedure call failed.'],
+    [0x80080005, 'CO_E_SERVER_EXEC_FAILURE','hresult', 'Server execution failed. The COM server could not be started.'],
+    [0x80090020, 'NTE_FAIL',                'hresult', 'An internal cryptographic error occurred.'],
+    [0x80131509, 'COR_E_EXCEPTION',         'hresult', 'A .NET exception occurred.'],
+    [0x80131515, 'COR_E_FILENOTFOUND',      'hresult', '.NET file not found exception.'],
+    [0x8024402C, 'WU_E_PT_WINHTTP_NAME_NOT_RESOLVED', 'hresult', 'Windows Update: proxy or server name could not be resolved.'],
+    [0x80240016, 'WU_E_INSTALL_NOT_ALLOWED','hresult', 'Windows Update: installation is not allowed at this time.'],
+    [0x80073CF9, 'ERROR_PACKAGE_ALREADY_EXISTS', 'hresult', 'The app package is already installed with a higher version.'],
+    [0x80073D05, 'ERROR_DELETING_EXISTING_APPLICATIONDATA_STORE_FAILED', 'hresult', 'Failed to remove existing app data store during reinstall.'],
+
+    // ── NTSTATUS codes ──
+    [0x00000000, 'STATUS_SUCCESS',                  'ntstatus', 'The operation completed successfully.'],
+    [0xC0000001, 'STATUS_UNSUCCESSFUL',             'ntstatus', 'An unsuccessful status was returned by the routine that was called.'],
+    [0xC0000002, 'STATUS_NOT_IMPLEMENTED',          'ntstatus', 'The requested operation is not implemented.'],
+    [0xC0000005, 'STATUS_ACCESS_VIOLATION',         'ntstatus', 'An access violation (segfault) occurred while reading or writing memory.'],
+    [0xC0000008, 'STATUS_INVALID_HANDLE',           'ntstatus', 'An invalid HANDLE was specified.'],
+    [0xC000000D, 'STATUS_INVALID_PARAMETER',        'ntstatus', 'An invalid parameter was passed to a service or function.'],
+    [0xC000000E, 'STATUS_NO_SUCH_FILE',             'ntstatus', 'The file does not exist.'],
+    [0xC000000F, 'STATUS_NO_SUCH_DEVICE',           'ntstatus', 'The specified device object name could not be found.'],
+    [0xC0000017, 'STATUS_NO_MEMORY',                'ntstatus', 'Insufficient system resources exist to complete the request.'],
+    [0xC0000022, 'STATUS_ACCESS_DENIED',            'ntstatus', 'Access is denied. The caller lacks the required privilege or permission.'],
+    [0xC0000023, 'STATUS_BUFFER_TOO_SMALL',         'ntstatus', 'The buffer is too small to contain the requested data.'],
+    [0xC0000033, 'STATUS_OBJECT_NAME_INVALID',      'ntstatus', 'The object name is invalid (bad characters or format).'],
+    [0xC0000034, 'STATUS_OBJECT_NAME_NOT_FOUND',    'ntstatus', 'The specified object name was not found.'],
+    [0xC0000035, 'STATUS_OBJECT_NAME_COLLISION',    'ntstatus', 'The object name already exists.'],
+    [0xC000003A, 'STATUS_OBJECT_PATH_NOT_FOUND',    'ntstatus', 'The object path was not found.'],
+    [0xC0000043, 'STATUS_SHARING_VIOLATION',        'ntstatus', 'A file cannot be opened because the share access flags are incompatible.'],
+    [0xC000004F, 'STATUS_EAS_NOT_SUPPORTED',        'ntstatus', 'The file system does not support extended attributes.'],
+    [0xC0000061, 'STATUS_PRIVILEGE_NOT_HELD',       'ntstatus', 'A required privilege is not held by the client.'],
+    [0xC00000BA, 'STATUS_FILE_IS_A_DIRECTORY',      'ntstatus', 'The file that was specified as a target is a directory.'],
+    [0xC00000BB, 'STATUS_NOT_SUPPORTED',            'ntstatus', 'The request is not supported.'],
+    [0xC0000098, 'STATUS_FILE_CORRUPT_ERROR',       'ntstatus', 'The file or directory is corrupted and unreadable.'],
+    [0xC00000E5, 'STATUS_INTERNAL_ERROR',           'ntstatus', 'An internal error occurred.'],
+    [0xC0000135, 'STATUS_DLL_NOT_FOUND',            'ntstatus', 'The referenced DLL could not be found.'],
+    [0xC0000139, 'STATUS_ENTRYPOINT_NOT_FOUND',     'ntstatus', 'The specified procedure could not be found in the DLL.'],
+    [0xC0000142, 'STATUS_DLL_INIT_FAILED',          'ntstatus', 'DLL initialization routine failed.'],
+    [0xC0000194, 'STATUS_POSSIBLE_DEADLOCK',        'ntstatus', 'A potential deadlock condition has been detected.'],
+    [0xC000021A, 'STATUS_SYSTEM_PROCESS_TERMINATED', 'ntstatus', 'A critical system process terminated unexpectedly (often causes BSOD).'],
+    [0xC0000225, 'STATUS_NOT_FOUND',                'ntstatus', 'The requested object was not found.'],
+    [0xC000026E, 'STATUS_DRIVER_UNABLE_TO_LOAD',    'ntstatus', 'The driver could not be loaded.'],
+    [0x80000005, 'STATUS_BUFFER_OVERFLOW',          'ntstatus', 'The output buffer was too small; data was truncated.'],
+    [0x00000103, 'STATUS_PENDING',                  'ntstatus', 'The operation is pending completion (used with async I/O).'],
+    [0x00000104, 'STATUS_REPARSE',                  'ntstatus', 'A reparse should be performed by the Object Manager (e.g. symlink traversal).'],
+    [0xC0000120, 'STATUS_CANCELLED',                'ntstatus', 'The I/O request was cancelled.'],
+    [0xC000014B, 'STATUS_PIPE_BROKEN',              'ntstatus', 'The pipe operation has failed because the other end of the pipe has been closed.'],
+
+    // ── Win32 error codes ──
+    [0,    'ERROR_SUCCESS',                'win32', 'The operation completed successfully.'],
+    [1,    'ERROR_INVALID_FUNCTION',       'win32', 'Incorrect function.'],
+    [2,    'ERROR_FILE_NOT_FOUND',         'win32', 'The system cannot find the file specified.'],
+    [3,    'ERROR_PATH_NOT_FOUND',         'win32', 'The system cannot find the path specified.'],
+    [4,    'ERROR_TOO_MANY_OPEN_FILES',    'win32', 'The system cannot open the file. Too many files are open.'],
+    [5,    'ERROR_ACCESS_DENIED',          'win32', 'Access is denied.'],
+    [6,    'ERROR_INVALID_HANDLE',         'win32', 'The handle is invalid.'],
+    [8,    'ERROR_NOT_ENOUGH_MEMORY',      'win32', 'Not enough memory resources are available to process this command.'],
+    [14,   'ERROR_OUTOFMEMORY',            'win32', 'Not enough storage is available to complete this operation.'],
+    [15,   'ERROR_INVALID_DRIVE',          'win32', 'The system cannot find the drive specified.'],
+    [20,   'ERROR_BAD_UNIT',               'win32', 'The system cannot find the device specified.'],
+    [21,   'ERROR_NOT_READY',              'win32', 'The device is not ready.'],
+    [32,   'ERROR_SHARING_VIOLATION',      'win32', 'The process cannot access the file because it is being used by another process.'],
+    [33,   'ERROR_LOCK_VIOLATION',         'win32', 'The process cannot access the file because another process has locked a portion of the file.'],
+    [50,   'ERROR_NOT_SUPPORTED',          'win32', 'The request is not supported.'],
+    [55,   'ERROR_DEV_NOT_EXIST',          'win32', 'The specified network resource or device is no longer available.'],
+    [87,   'ERROR_INVALID_PARAMETER',      'win32', 'The parameter is incorrect.'],
+    [109,  'ERROR_BROKEN_PIPE',            'win32', 'The pipe has been ended.'],
+    [111,  'ERROR_BUFFER_OVERFLOW',        'win32', 'The file name is too long.'],
+    [122,  'ERROR_INSUFFICIENT_BUFFER',    'win32', 'The data area passed to a system call is too small.'],
+    [123,  'ERROR_INVALID_NAME',           'win32', 'The filename, directory name, or volume label syntax is incorrect.'],
+    [126,  'ERROR_MOD_NOT_FOUND',          'win32', 'The specified module could not be found.'],
+    [127,  'ERROR_PROC_NOT_FOUND',         'win32', 'The specified procedure could not be found.'],
+    [145,  'ERROR_DIR_NOT_EMPTY',          'win32', 'The directory is not empty.'],
+    [183,  'ERROR_ALREADY_EXISTS',         'win32', 'Cannot create a file when that file already exists.'],
+    [234,  'ERROR_MORE_DATA',              'win32', 'More data is available.'],
+    [258,  'WAIT_TIMEOUT',                 'win32', 'The wait operation timed out.'],
+    [997,  'ERROR_IO_PENDING',             'win32', 'Overlapped I/O operation is in progress.'],
+    [998,  'ERROR_NOACCESS',               'win32', 'Invalid access to memory location.'],
+    [1053, 'ERROR_SERVICE_REQUEST_TIMEOUT','win32', 'The service did not respond to the start or control request in a timely fashion.'],
+    [1060, 'ERROR_SERVICE_DOES_NOT_EXIST', 'win32', 'The specified service does not exist as an installed service.'],
+    [1067, 'ERROR_PROCESS_ABORTED',        'win32', 'The process terminated unexpectedly.'],
+    [1168, 'ERROR_NOT_FOUND',              'win32', 'Element not found.'],
+    [1223, 'ERROR_CANCELLED',              'win32', 'The operation was canceled by the user.'],
+    [1314, 'ERROR_PRIVILEGE_NOT_HELD',     'win32', 'A required privilege is not held by the client.'],
+    [1392, 'ERROR_FILE_CORRUPT',           'win32', 'The file or directory is corrupted and unreadable.'],
+    [1450, 'ERROR_NO_SYSTEM_RESOURCES',    'win32', 'Insufficient system resources exist to complete the requested service.'],
+    [1722, 'RPC_S_SERVER_UNAVAILABLE',     'win32', 'The RPC server is unavailable.'],
+    [1726, 'RPC_S_CALL_FAILED',            'win32', 'The remote procedure call failed.'],
+    [2,    'NERR_NetNotStarted',           'win32', 'The workstation driver is not installed.'],
+    [5,    'ERROR_ACCESS_DENIED',          'win32', 'Access is denied.'],
+  ];
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+  function hex(n) { return '0x' + (n >>> 0).toString(16).toUpperCase().padStart(8, '0'); }
+  function dec(n) { return (n >>> 0).toString(10); }
+
+  function decodeHresult(val) {
+    const severity = (val >>> 31) & 1;
+    const customer = (val >>> 29) & 1;
+    const facility = (val >>> 16) & 0x7FF;
+    const code     = val & 0xFFFF;
+    return {
+      severity: severity ? 'Failure' : 'Success',
+      customer: customer ? 'Yes' : 'No',
+      facility,
+      code,
+    };
+  }
+
+  function facilityName(f) {
+    const names = {
+      0: 'FACILITY_NULL', 1: 'FACILITY_RPC', 2: 'FACILITY_DISPATCH', 3: 'FACILITY_STORAGE',
+      4: 'FACILITY_ITF', 7: 'FACILITY_WIN32', 8: 'FACILITY_WINDOWS', 9: 'FACILITY_SSPI',
+      10: 'FACILITY_CONTROL', 11: 'FACILITY_CERT', 13: 'FACILITY_INTERNET',
+      14: 'FACILITY_MEDIASERVER', 16: 'FACILITY_MSMQ', 17: 'FACILITY_SETUPAPI',
+      19: 'FACILITY_SCARD', 20: 'FACILITY_COMPLUS', 21: 'FACILITY_AAF',
+      22: 'FACILITY_URT', 23: 'FACILITY_ACS', 24: 'FACILITY_DPLAY',
+      25: 'FACILITY_UMI', 26: 'FACILITY_SXS', 27: 'FACILITY_WINDOWS_CE',
+      31: 'FACILITY_HTTP', 32: 'FACILITY_USERMODE_COMMONLOG', 36: 'FACILITY_USERMODE_FILTER_MANAGER',
+      48: 'FACILITY_DEBUGGER', 52: 'FACILITY_CONFIGURATION', 54: 'FACILITY_STATE_MANAGEMENT',
+      80: 'FACILITY_METADIRECTORY',
+    };
+    return names[f] || `FACILITY_${f}`;
+  }
+
+  // ─── Search logic ─────────────────────────────────────────────────────────────
+
+  function parseInputValue(input) {
+    const s = input.trim().replace(/^0x/i, '');
+    const n = parseInt(s, /^[0-9a-f]+$/i.test(s) && (input.trim().startsWith('0x') || input.trim().startsWith('0X') || /[a-fA-F]/.test(s)) ? 16 : 10);
+    return isNaN(n) ? null : n >>> 0;
+  }
+
+  function search(query, typeFilter) {
+    const q = query.trim();
+    if (!q) return [];
+
+    const numVal = parseInputValue(q);
+    const textQ  = q.toLowerCase();
+
+    let results = DB.filter(([val, name, type, desc]) => {
+      if (typeFilter !== 'all' && type !== typeFilter) return false;
+      if (numVal !== null && (val >>> 0) === numVal) return true;
+      if (name.toLowerCase().includes(textQ)) return true;
+      if (desc.toLowerCase().includes(textQ)) return true;
+      return false;
+    });
+
+    // Dedupe by val+name+type
+    const seen = new Set();
+    results = results.filter(([val, name, type]) => {
+      const key = `${val}|${name}|${type}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    // Sort: exact numeric matches first, then alphabetical
+    results.sort((a, b) => {
+      const aExact = numVal !== null && (a[0] >>> 0) === numVal ? 0 : 1;
+      const bExact = numVal !== null && (b[0] >>> 0) === numVal ? 0 : 1;
+      if (aExact !== bExact) return aExact - bExact;
+      return a[1].localeCompare(b[1]);
+    });
+
+    return results;
+  }
+
+  // ─── Rendering ────────────────────────────────────────────────────────────────
+
+  function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function renderResult([val, name, type, desc]) {
+    const h = hex(val);
+    const d = dec(val);
+    let extra = '';
+
+    if (type === 'hresult') {
+      const info = decodeHresult(val);
+      extra = `
+        <div class="conversions">
+          <strong>HRESULT decode:</strong>
+          Severity: <code>${info.severity}</code> &middot;
+          Facility: <code>${facilityName(info.facility)} (${info.facility})</code> &middot;
+          Code: <code>0x${info.code.toString(16).toUpperCase()} (${info.code})</code> &middot;
+          Customer bit: <code>${info.customer}</code>
+        </div>`;
+    }
+    if (type === 'win32') {
+      const hr = (0x80070000 | val) >>> 0;
+      extra = `
+        <div class="conversions">
+          <strong>As HRESULT:</strong> <code>${hex(hr)}</code> (via HRESULT_FROM_WIN32)
+        </div>`;
+    }
+
+    return `
+      <div class="result-card">
+        <h3>${esc(name)} <span class="badge ${type}">${type}</span></h3>
+        <div class="meta">
+          <span class="code-value">${h}</span> &nbsp;|&nbsp; decimal: <code>${d}</code>
+          ${type === 'ntstatus' ? ' &nbsp;|&nbsp; signed: <code>' + (val | 0) + '</code>' : ''}
+        </div>
+        <div class="desc">${esc(desc)}</div>
+        ${extra}
+      </div>`;
+  }
+
+  // ─── Event wiring ─────────────────────────────────────────────────────────────
+
+  const searchEl  = document.getElementById('search');
+  const filterEl  = document.getElementById('filter');
+  const resultsEl = document.getElementById('results');
+  const countEl   = document.getElementById('results-count');
+
+  function run() {
+    const results = search(searchEl.value, filterEl.value);
+    if (!searchEl.value.trim()) {
+      resultsEl.innerHTML = '';
+      countEl.textContent = '';
+      return;
+    }
+    if (results.length === 0) {
+      resultsEl.innerHTML = '<p class="no-result">No matching error codes found.</p>';
+      countEl.textContent = '';
+    } else {
+      countEl.textContent = `${results.length} result${results.length > 1 ? 's' : ''}`;
+      resultsEl.innerHTML = results.slice(0, 50).map(renderResult).join('');
+    }
+  }
+
+  searchEl.addEventListener('input', run);
+  filterEl.addEventListener('change', run);
+
+  // Support linking with ?q=...
+  const urlQ = new URLSearchParams(location.search).get('q');
+  if (urlQ) { searchEl.value = urlQ; run(); }
+}());
+</script>
+
+</body>
+</html>

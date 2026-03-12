@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Base Converter</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .converter-grid {
+      display: grid;
+      grid-template-columns: 100px 1fr;
+      gap: 8px 12px;
+      align-items: center;
+    }
+    .converter-grid label {
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-align: right;
+      color: var(--text-sec);
+    }
+    .converter-grid input {
+      width: 100%;
+      padding: 10px 14px;
+      font-size: 1rem;
+      font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .converter-grid input:focus { border-color: var(--brand); }
+    .converter-grid input.error { border-color: #d73a49; }
+
+    .bit-viewer {
+      margin: 20px 0;
+      overflow-x: auto;
+    }
+    .bit-viewer table { border-collapse: collapse; width: auto; }
+    .bit-viewer th, .bit-viewer td {
+      width: 22px;
+      min-width: 22px;
+      height: 26px;
+      text-align: center;
+      font-family: 'Cascadia Code', Consolas, monospace;
+      font-size: 0.75rem;
+      border: 1px solid var(--border);
+      padding: 2px;
+    }
+    .bit-viewer th {
+      background: var(--code-bg);
+      font-weight: 400;
+      color: var(--text-sec);
+      font-size: 0.65rem;
+    }
+    .bit-viewer td.one { background: #dceefb; color: var(--brand-dk); font-weight: 700; }
+    .bit-viewer td.zero { color: #ccc; }
+    .bit-viewer td.nibble-sep { border-right: 2px solid var(--brand); }
+
+    .byte-view {
+      font-family: 'Cascadia Code', Consolas, monospace;
+      font-size: 0.9rem;
+      margin: 12px 0;
+    }
+    .byte-view .label { color: var(--text-sec); font-size: 0.8rem; display: inline-block; width: 100px; text-align: right; margin-right: 12px; }
+
+    .width-select { margin: 12px 0; }
+    .width-select button {
+      padding: 6px 14px;
+      margin-right: 6px;
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .width-select button.active {
+      border-color: var(--brand);
+      background: var(--brand);
+      color: #fff;
+    }
+    .width-select button:hover:not(.active) { border-color: var(--brand); }
+
+    .info-row {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin: 16px 0 0;
+      font-size: 0.85rem;
+      color: var(--text-sec);
+    }
+    .info-row code { font-size: 0.82rem; }
+
+    .quick-const { margin: 16px 0; }
+    .quick-const summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; color: var(--brand-dk); }
+    .quick-const table { margin-top: 8px; font-size: 0.85rem; }
+    .quick-const td:first-child { font-family: 'Cascadia Code', Consolas, monospace; }
+    .quick-const tr { cursor: pointer; }
+    .quick-const tr:hover td { background: #edf5fc; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Base Converter</h1>
+  <p>Hex / Decimal / Octal / Binary with 64-bit support</p>
+</header>
+
+<nav class="samples-nav">
+  <a href="index.html">Home</a>
+  <a href="error-codes.html">Error Codes</a>
+  <a href="base-converter.html">Base Converter</a>
+  <a href="api-reference.html">API Reference</a>
+  <a href="architecture.html">Architecture</a>
+</nav>
+
+<main>
+
+<div class="card">
+  <div class="width-select" id="widths">
+    <strong style="margin-right:8px">Width:</strong>
+    <button data-bits="8">8-bit</button>
+    <button data-bits="16">16-bit</button>
+    <button data-bits="32" class="active">32-bit</button>
+    <button data-bits="64">64-bit</button>
+  </div>
+
+  <div class="converter-grid">
+    <label for="hex">Hex</label>
+    <input type="text" id="hex" placeholder="0x0" spellcheck="false" autofocus>
+
+    <label for="dec">Decimal</label>
+    <input type="text" id="dec" placeholder="0" spellcheck="false">
+
+    <label for="sdec">Signed</label>
+    <input type="text" id="sdec" placeholder="0" spellcheck="false">
+
+    <label for="oct">Octal</label>
+    <input type="text" id="oct" placeholder="0o0" spellcheck="false">
+
+    <label for="bin">Binary</label>
+    <input type="text" id="bin" placeholder="0b0" spellcheck="false">
+  </div>
+
+  <div class="info-row" id="info"></div>
+</div>
+
+<div class="card">
+  <strong>Bit Viewer</strong>
+  <div class="bit-viewer" id="bitViewer"></div>
+  <div class="byte-view" id="byteView"></div>
+</div>
+
+<div class="card">
+  <details class="quick-const" open>
+    <summary>Common Windows Constants</summary>
+    <table id="constTable">
+      <tr><th>Value</th><th>Name</th></tr>
+    </table>
+  </details>
+</div>
+
+</main>
+
+<footer>
+  Base Converter &mdash; Sample tool for
+  <a href="https://github.com/vineeththomasalex/ADOPagesExtension">ADO Pages</a>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  // ─── State ────────────────────────────────────────────────────────────────────
+
+  let bits = 32;
+  let value = 0n;
+
+  const mask = () => (1n << BigInt(bits)) - 1n;
+
+  // ─── Elements ─────────────────────────────────────────────────────────────────
+
+  const hexEl  = document.getElementById('hex');
+  const decEl  = document.getElementById('dec');
+  const sdecEl = document.getElementById('sdec');
+  const octEl  = document.getElementById('oct');
+  const binEl  = document.getElementById('bin');
+  const infoEl = document.getElementById('info');
+  const bitViewerEl = document.getElementById('bitViewer');
+  const byteViewEl  = document.getElementById('byteView');
+  const fields = [hexEl, decEl, sdecEl, octEl, binEl];
+
+  // ─── Conversion ───────────────────────────────────────────────────────────────
+
+  function clamp(v) { return v & mask(); }
+
+  function toSigned(v) {
+    const signBit = 1n << BigInt(bits - 1);
+    return (v & signBit) ? v - (1n << BigInt(bits)) : v;
+  }
+
+  function updateFields(source) {
+    const v = value;
+    if (source !== hexEl)  hexEl.value  = '0x' + v.toString(16).toUpperCase();
+    if (source !== decEl)  decEl.value  = v.toString(10);
+    if (source !== sdecEl) sdecEl.value = toSigned(v).toString(10);
+    if (source !== octEl)  octEl.value  = '0o' + v.toString(8);
+    if (source !== binEl)  binEl.value  = '0b' + v.toString(2);
+
+    fields.forEach(f => f.classList.remove('error'));
+    updateBitViewer();
+    updateInfo();
+  }
+
+  // ─── Bit viewer ───────────────────────────────────────────────────────────────
+
+  function updateBitViewer() {
+    const binStr = value.toString(2).padStart(bits, '0');
+    let headerRow = '<tr>';
+    let dataRow   = '<tr>';
+
+    for (let i = 0; i < bits; i++) {
+      const bitIdx = bits - 1 - i;
+      const isNibbleSep = (bitIdx % 4 === 0) && bitIdx !== 0;
+      const cls = [];
+      if (binStr[i] === '1') cls.push('one'); else cls.push('zero');
+      if (isNibbleSep) cls.push('nibble-sep');
+
+      headerRow += `<th${isNibbleSep ? ' class="nibble-sep"' : ''}>${bitIdx}</th>`;
+      dataRow   += `<td class="${cls.join(' ')}">${binStr[i]}</td>`;
+    }
+
+    headerRow += '</tr>';
+    dataRow   += '</tr>';
+    bitViewerEl.innerHTML = `<table>${headerRow}${dataRow}</table>`;
+
+    // Byte view (little-endian and big-endian)
+    const hexStr = value.toString(16).toUpperCase().padStart(bits / 4, '0');
+    const bytes = [];
+    for (let i = 0; i < hexStr.length; i += 2) bytes.push(hexStr.substring(i, i + 2));
+
+    const be = bytes.join(' ');
+    const le = [...bytes].reverse().join(' ');
+
+    byteViewEl.innerHTML =
+      `<div><span class="label">Big-endian:</span>${be}</div>` +
+      `<div><span class="label">Little-endian:</span>${le}</div>`;
+  }
+
+  // ─── Info row ─────────────────────────────────────────────────────────────────
+
+  function updateInfo() {
+    const v = value;
+    const popcount = v.toString(2).split('').filter(c => c === '1').length;
+    const s = toSigned(v);
+    const parts = [
+      `<span>Bits set: <code>${popcount}</code> of <code>${bits}</code></span>`,
+      `<span>Max unsigned: <code>${mask()}</code></span>`,
+    ];
+    if (v !== 0n) {
+      // Is power of 2?
+      if ((v & (v - 1n)) === 0n) {
+        const exp = v.toString(2).length - 1;
+        parts.push(`<span>Power of 2: <code>2^${exp}</code></span>`);
+      }
+      // Alignment
+      if (v > 0n) {
+        let align = 1n;
+        let tmp = v;
+        while ((tmp & 1n) === 0n) { align <<= 1n; tmp >>= 1n; }
+        if (align > 1n) parts.push(`<span>Aligned to: <code>${align}</code> bytes</span>`);
+      }
+    }
+    infoEl.innerHTML = parts.join('');
+  }
+
+  // ─── Parsing ──────────────────────────────────────────────────────────────────
+
+  function parseInput(el) {
+    let raw = el.value.trim();
+    if (!raw) { value = 0n; updateFields(el); return; }
+
+    try {
+      let v;
+      if (el === hexEl) {
+        raw = raw.replace(/^0x/i, '');
+        v = BigInt('0x' + raw);
+      } else if (el === octEl) {
+        raw = raw.replace(/^0o/i, '');
+        v = BigInt('0o' + raw);
+      } else if (el === binEl) {
+        raw = raw.replace(/^0b/i, '');
+        v = BigInt('0b' + raw);
+      } else if (el === sdecEl) {
+        v = BigInt(raw);
+        if (v < 0n) v = (1n << BigInt(bits)) + v;
+      } else {
+        v = BigInt(raw);
+      }
+
+      v = clamp(v);
+      value = v;
+      updateFields(el);
+    } catch (e) {
+      el.classList.add('error');
+    }
+  }
+
+  fields.forEach(f => f.addEventListener('input', () => parseInput(f)));
+
+  // ─── Width buttons ────────────────────────────────────────────────────────────
+
+  document.getElementById('widths').addEventListener('click', e => {
+    if (e.target.tagName !== 'BUTTON') return;
+    document.querySelectorAll('#widths button').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    bits = parseInt(e.target.dataset.bits);
+    value = clamp(value);
+    updateFields(null);
+  });
+
+  // ─── Common constants ─────────────────────────────────────────────────────────
+
+  const CONSTANTS = [
+    ['0xFFFFFFFF', 'UINT32_MAX / INVALID_HANDLE_VALUE'],
+    ['0x7FFFFFFF', 'INT32_MAX'],
+    ['0x80000000', 'INT32_MIN (as unsigned)'],
+    ['0xFFFF',     'UINT16_MAX'],
+    ['0xFF',       'UINT8_MAX / BYTE_MAX'],
+    ['0x00000001', 'TRUE'],
+    ['0x00000000', 'FALSE / NULL'],
+    ['0xDEADBEEF', 'Common debug fill pattern'],
+    ['0xCDCDCDCD', 'MSVC debug heap: uninitialized memory'],
+    ['0xDDDDDDDD', 'MSVC debug heap: freed memory'],
+    ['0xFDFDFDFD', 'MSVC debug heap: guard bytes (no-mans-land)'],
+    ['0xFEEEFEEE', 'HeapFree() fill pattern'],
+    ['0xBAADF00D', 'HeapAlloc(HEAP_NO_SERIALIZE) fill'],
+    ['0x00000010', 'FILE_ATTRIBUTE_DIRECTORY'],
+    ['0x00000020', 'FILE_ATTRIBUTE_ARCHIVE'],
+    ['0x00000080', 'FILE_ATTRIBUTE_NORMAL'],
+    ['0x00000100', 'FILE_ATTRIBUTE_TEMPORARY'],
+    ['0x00001000', 'MEM_COMMIT'],
+    ['0x00002000', 'MEM_RESERVE'],
+    ['0x00010000', 'MEM_RELEASE'],
+    ['0x00000004', 'PAGE_READWRITE'],
+    ['0x00000010', 'PAGE_EXECUTE'],
+    ['0x00000040', 'PAGE_EXECUTE_READWRITE'],
+    ['0x80000000', 'GENERIC_READ'],
+    ['0x40000000', 'GENERIC_WRITE'],
+    ['0x10000000', 'GENERIC_ALL'],
+  ];
+
+  const constTable = document.getElementById('constTable');
+  CONSTANTS.forEach(([val, name]) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${val}</td><td>${name}</td>`;
+    tr.addEventListener('click', () => {
+      hexEl.value = val;
+      parseInput(hexEl);
+    });
+    constTable.appendChild(tr);
+  });
+
+  // ─── Init ─────────────────────────────────────────────────────────────────────
+  updateFields(null);
+
+  // Support linking with ?v=...
+  const urlV = new URLSearchParams(location.search).get('v');
+  if (urlV) { hexEl.value = urlV; parseInput(hexEl); }
+}());
+</script>
+
+</body>
+</html>
